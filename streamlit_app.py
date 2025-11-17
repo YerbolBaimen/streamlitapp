@@ -39,25 +39,21 @@ def parse_str_list(cell):
     - stringified lists like "['A', 'B']"
     - simple comma-separated strings like "A, B, C"
     """
-    # Already a Python list -> normalize entries to strings
     if isinstance(cell, list):
         return [str(x).strip(" '\"") for x in cell]
 
-    # Null-ish values
     if cell is None:
         return []
     try:
         if pd.isna(cell):
             return []
     except TypeError:
-        # Non-scalar values – fall back to string handling
         pass
 
     text = str(cell).strip()
     if not text:
         return []
 
-    # Try to interpret as Python literal list/tuple
     if (text.startswith("[") and text.endswith("]")) or (
         text.startswith("(") and text.endswith(")")
     ):
@@ -66,10 +62,8 @@ def parse_str_list(cell):
             if isinstance(parsed, (list, tuple)):
                 return [str(x).strip(" '\"") for x in parsed]
         except Exception:
-            # Fall back to comma-separated parsing
             pass
 
-    # Fallback: comma-separated text
     return [item.strip() for item in text.split(",") if item.strip()]
 
 
@@ -146,7 +140,6 @@ uploaded_file = st.file_uploader(
     "Upload TOP-250 Movies file (CSV or JSON)", type=["csv", "json"]
 )
 
-# If no file yet, show prompt and stop
 if uploaded_file is None:
     st.info("👆 Please upload a CSV or JSON file to begin.")
     st.stop()
@@ -159,13 +152,11 @@ if uploaded_file.name.lower().endswith(".csv"):
 else:
     df_raw = pd.read_json(uploaded_file)
 
-# Validate columns
 missing_cols = [c for c in EXPECTED_COLUMNS if c not in df_raw.columns]
 if missing_cols:
     st.error(f"Missing required columns: {', '.join(missing_cols)}")
     st.stop()
 
-# Reorder columns and fix dtypes
 df_raw = df_raw[EXPECTED_COLUMNS]
 df = ensure_dtypes(df_raw)
 
@@ -189,16 +180,25 @@ spielberg_total_duration = spielberg_df["duration"].sum()
 # 3–5) Actor tables
 screentime_top10, most_active_top10, most_gross_top10 = compute_actor_tables(df)
 
+# 6) Timeline data: movies per year
+year_counts = (
+    df.groupby("year")["title"]
+    .nunique()
+    .reset_index(name="movie_count")
+    .sort_values("year")
+)
+
 # --------------------------------------------------
-# Tabs
+# Tabs (including WOW: Timeline View)
 # --------------------------------------------------
-tab1, tab2, tab3, tab4, tab5 = st.tabs(
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
     [
         "Patience",
         "Binge Watching Steven Spielberg",
         "This is about me",
         "Workhorse",
         "Cash horse",
+        "Timeline View ⭐",
     ]
 )
 
@@ -300,3 +300,19 @@ with tab5:
             gross_ranked[["rank", "actor", "total_gross"]],
             use_container_width=True,
         )
+
+# --- Tab 6: Timeline View (WOW Feature) ---
+with tab6:
+    st.subheader("Timeline View: Number of movies per year ⭐")
+    st.write("A simple timeline showing how many TOP-250 movies were released each year.")
+
+    if year_counts.empty:
+        st.warning("No year information available to build the timeline.")
+    else:
+        # Use year as index for a clean bar chart
+        st.bar_chart(
+            year_counts.set_index("year")["movie_count"],
+            use_container_width=True,
+        )
+
+        st.caption("Bars show how many of the uploaded TOP-250 movies belong to each year.")
